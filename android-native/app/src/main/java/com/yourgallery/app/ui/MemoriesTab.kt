@@ -34,7 +34,7 @@ import java.util.Locale
 
 @Composable
 fun MemoriesView(mediaList: List<DeviceMedia>, imageLoader: ImageLoader, onItemClick: (DeviceMedia) -> Unit) {
-    val nonTrashed = remember(mediaList) { mediaList.filter { it.trashedAt == 0L } }
+    val nonTrashed = remember(mediaList) { mediaList.filter { it.trashedAt == 0L && !it.isHidden } }
     val highlights = remember(nonTrashed) { nonTrashed.take(10) }
     val videos = remember(nonTrashed) { nonTrashed.filter { it.isVideo } }
     val favorites = remember(nonTrashed) { nonTrashed.filter { it.isFavorite } }

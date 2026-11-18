@@ -77,6 +77,10 @@ fun InteractiveViewerPager(
     var showChrome by remember { mutableStateOf(true) }
     var isImageZoomedIn by remember { mutableStateOf(false) }
 
+    LaunchedEffect(pagerState.currentPage) {
+        isImageZoomedIn = false
+    }
+
     BackHandler { onClose() }
 
     Box(
@@ -256,10 +260,10 @@ fun ZoomableImageItem(
     val coroutineScope = rememberCoroutineScope()
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val scaleAnim = remember { Animatable(1f) }
-    val offsetXAnim = remember { Animatable(0f) }
-    val offsetYAnim = remember { Animatable(0f) }
-    val dismissYAnim = remember { Animatable(0f) }
+    val scaleAnim = remember(item.id) { Animatable(1f) }
+    val offsetXAnim = remember(item.id) { Animatable(0f) }
+    val offsetYAnim = remember(item.id) { Animatable(0f) }
+    val dismissYAnim = remember(item.id) { Animatable(0f) }
 
     val isZoomed = scaleAnim.value > 1.05f
 
@@ -439,7 +443,7 @@ fun VideoPlayerItem(uri: android.net.Uri, isActivePage: Boolean, showChrome: Boo
         }
     }
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(exoPlayer, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE) {
                 exoPlayer.pause()

@@ -41,53 +41,107 @@ fun CompareScreen(
             )
         }
     ) { padding ->
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(Color.Black),
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .background(Color.Black)
         ) {
-            mediaItems.forEach { item ->
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(2.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            if (mediaItems.size <= 2) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                    ) {
-                        AsyncImage(
-                            model = item.uri,
+                    mediaItems.forEach { item ->
+                        CompareItem(
+                            item = item,
                             imageLoader = imageLoader,
-                            contentDescription = item.displayName,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
+                            onFavorite = onFavorite,
+                            onDelete = onDelete,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(4.dp)
                         )
                     }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        IconButton(onClick = { onFavorite(item) }) {
-                            Icon(
-                                if (item.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                                contentDescription = "Favorite",
-                                tint = if (item.isFavorite) Color.Red else Color.White
-                            )
-                        }
-                        IconButton(onClick = { onDelete(item) }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.Red)
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    val rows = mediaItems.chunked(2)
+                    rows.forEach { rowItems ->
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            rowItems.forEach { item ->
+                                CompareItem(
+                                    item = item,
+                                    imageLoader = imageLoader,
+                                    onFavorite = onFavorite,
+                                    onDelete = onDelete,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .padding(4.dp)
+                                )
+                            }
+                            if (rowItems.size == 1) {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CompareItem(
+    item: DeviceMedia,
+    imageLoader: ImageLoader,
+    onFavorite: (DeviceMedia) -> Unit,
+    onDelete: (DeviceMedia) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+        ) {
+            AsyncImage(
+                model = item.uri,
+                imageLoader = imageLoader,
+                contentDescription = item.displayName,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            IconButton(onClick = { onFavorite(item) }) {
+                Icon(
+                    if (item.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = "Favorite",
+                    tint = if (item.isFavorite) Color.Red else Color.White
+                )
+            }
+            IconButton(onClick = { onDelete(item) }) {
+                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color(0xFFFF5252))
             }
         }
     }

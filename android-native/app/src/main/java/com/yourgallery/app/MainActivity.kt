@@ -78,7 +78,7 @@ fun YourGalleryApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("your_gallery_prefs", Context.MODE_PRIVATE) }
     var galleryTitle by remember { mutableStateOf(prefs.getString("gallery_title", "Your Gallery") ?: "Your Gallery") }
-    var darkMode by remember { mutableStateOf(true) }
+    var darkMode by remember { mutableStateOf(prefs.getBoolean("dark_mode", true)) }
 
     // Enforce proper status bar contrast for light/dark mode
     val view = androidx.compose.ui.platform.LocalView.current
@@ -98,8 +98,11 @@ fun YourGalleryApp() {
     var isSearching by remember { mutableStateOf(false) }
 
     // Settings state
-    var sortOrder by remember { mutableStateOf(SortOrder.DATE_DESC) }
-    var gridColumns by remember { mutableIntStateOf(3) }
+    var sortOrder by remember {
+        val saved = prefs.getString("sort_order", SortOrder.DATE_DESC.name)
+        mutableStateOf(try { SortOrder.valueOf(saved ?: SortOrder.DATE_DESC.name) } catch (_: Exception) { SortOrder.DATE_DESC })
+    }
+    var gridColumns by remember { mutableIntStateOf(prefs.getInt("grid_columns", 3)) }
 
     // Multi-select state
     var selectedMediaIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
@@ -635,7 +638,10 @@ fun YourGalleryApp() {
                                 selectedMediaIds = selectedMediaIds,
                                 gridColumns = gridColumns,
                                 gridState = photosGridState,
-                                onGridColumnsChange = { gridColumns = it },
+                                onGridColumnsChange = { 
+                                    gridColumns = it
+                                    prefs.edit().putInt("grid_columns", it).apply()
+                                },
                                 onItemClick = { item, index ->
                                     if (isSelectionMode) {
                                         selectedMediaIds = if (selectedMediaIds.contains(item.id)) selectedMediaIds - item.id else selectedMediaIds + item.id
@@ -1365,7 +1371,10 @@ fun YourGalleryApp() {
                         SortOrder.entries.take(2).forEach { s ->
                             FilterChip(
                                 selected = sortOrder == s,
-                                onClick = { sortOrder = s },
+                                onClick = { 
+                                    sortOrder = s
+                                    prefs.edit().putString("sort_order", s.name).apply()
+                                },
                                 label = { Text(s.label) }
                             )
                         }
@@ -1377,7 +1386,10 @@ fun YourGalleryApp() {
                         SortOrder.entries.drop(2).forEach { s ->
                             FilterChip(
                                 selected = sortOrder == s,
-                                onClick = { sortOrder = s },
+                                onClick = { 
+                                    sortOrder = s
+                                    prefs.edit().putString("sort_order", s.name).apply()
+                                },
                                 label = { Text(s.label) }
                             )
                         }
@@ -1390,7 +1402,10 @@ fun YourGalleryApp() {
                         listOf(2, 3, 4, 5).forEach { cols ->
                             FilterChip(
                                 selected = gridColumns == cols,
-                                onClick = { gridColumns = cols },
+                                onClick = { 
+                                    gridColumns = cols
+                                    prefs.edit().putInt("grid_columns", cols).apply()
+                                },
                                 label = { Text(cols.toString()) }
                             )
                         }
@@ -1405,7 +1420,13 @@ fun YourGalleryApp() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Dark Mode", style = MaterialTheme.typography.titleMedium)
-                        Switch(checked = darkMode, onCheckedChange = { darkMode = it })
+                        Switch(
+                            checked = darkMode, 
+                            onCheckedChange = { 
+                                darkMode = it
+                                prefs.edit().putBoolean("dark_mode", it).apply()
+                            }
+                        )
                     }
                     
                     HorizontalDivider()
