@@ -1,0 +1,90 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-sans: "Roboto", system-ui, -apple-system, sans-serif;
+    --font-mono: "Roboto Mono", ui-monospace, monospace;
+    --accent: #b8656b;
+    --accent-hover: #a15258;
+    --accent-soft: rgba(184, 101, 107, 0.14);
+    --accent-ring: rgba(184, 101, 107, 0.45);
+  }
+
+  :root.dark {
+    --accent: #d88a8f;
+    --accent-hover: #c5767b;
+    --accent-soft: rgba(216, 138, 143, 0.16);
+    --accent-ring: rgba(216, 138, 143, 0.45);
+  }
+
+  :root[data-theme="lavender"] {
+    --accent: #825eb3;
+    --accent-hover: #6e4c9d;
+    --accent-soft: rgba(130, 94, 179, 0.14);
+    --accent-ring: rgba(130, 94, 179, 0.45);
+  }
+  :root.dark[data-theme="lavender"] {
+    --accent: #a78bfa;
+    --accent-hover: #9070eb;
+    --accent-soft: rgba(167, 139, 250, 0.16);
+    --accent-ring: rgba(167, 139, 250, 0.45);
+  }
+
+  :root[data-theme="champagne"] {
+    --accent: #a97f4c;
+    --accent-hover: #916b3c;
+    --accent-soft: rgba(169, 127, 76, 0.14);
+    --accent-ring: rgba(169, 127, 76, 0.45);
+  }
+  :root.dark[data-theme="champagne"] {
+    --accent: #d4aa76;
+    --accent-hover: #c19763;
+    --accent-soft: rgba(212, 170, 118, 0.16);
+    --accent-ring: rgba(212, 170, 118, 0.45);
+  }
+
+  :root[data-theme="cobalt"] {
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-soft: rgba(37, 99, 235, 0.14);
+    --accent-ring: rgba(37, 99, 235, 0.45);
+  }
+  :root.dark[data-theme="cobalt"] {
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --accent-soft: rgba(59, 130, 246, 0.16);
+    --accent-ring: rgba(59, 130, 246, 0.45);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    overscroll-behavior-y: contain;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-sans);
+  }
+
+  .font-mono-exif {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
