@@ -67,7 +67,8 @@ fun InteractiveViewerPager(
     onFavorite: (DeviceMedia) -> Unit,
     onEdit: (DeviceMedia) -> Unit,
     onInfo: (DeviceMedia) -> Unit,
-    onDelete: (DeviceMedia) -> Unit
+    onDelete: (DeviceMedia) -> Unit,
+    onRestore: ((DeviceMedia) -> Unit)? = null
 ) {
     val pagerState = rememberPagerState(initialPage = initialIndex.coerceIn(0, (mediaList.size - 1).coerceAtLeast(0))) {
         mediaList.size
@@ -168,33 +169,54 @@ fun InteractiveViewerPager(
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     currentItem?.let { item ->
-                        ViewerActionButton(
-                            icon = Icons.Filled.Share,
-                            label = "Share",
-                            onClick = { onShare(item) }
-                        )
-                        ViewerActionButton(
-                            icon = if (item.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                            label = "Favorite",
-                            tint = if (item.isFavorite) Color.Red else Color.White,
-                            onClick = { onFavorite(item) }
-                        )
-                        ViewerActionButton(
-                            icon = Icons.Filled.Edit,
-                            label = "Edit",
-                            onClick = { onEdit(item) }
-                        )
-                        ViewerActionButton(
-                            icon = Icons.Filled.Info,
-                            label = "Details",
-                            onClick = { onInfo(item) }
-                        )
-                        ViewerActionButton(
-                            icon = Icons.Filled.Delete,
-                            label = "Trash",
-                            tint = Color(0xFFFF5252),
-                            onClick = { onDelete(item) }
-                        )
+                        if (item.trashedAt > 0L) {
+                            ViewerActionButton(
+                                icon = Icons.Filled.Restore,
+                                label = "Restore",
+                                onClick = { onRestore?.invoke(item) }
+                            )
+                            ViewerActionButton(
+                                icon = Icons.Filled.Info,
+                                label = "Details",
+                                onClick = { onInfo(item) }
+                            )
+                            ViewerActionButton(
+                                icon = Icons.Filled.DeleteForever,
+                                label = "Delete",
+                                tint = Color(0xFFFF5252),
+                                onClick = { onDelete(item) }
+                            )
+                        } else {
+                            ViewerActionButton(
+                                icon = Icons.Filled.Share,
+                                label = "Share",
+                                onClick = { onShare(item) }
+                            )
+                            ViewerActionButton(
+                                icon = if (item.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                label = "Favorite",
+                                tint = if (item.isFavorite) Color.Red else Color.White,
+                                onClick = { onFavorite(item) }
+                            )
+                            if (!item.isVideo) {
+                                ViewerActionButton(
+                                    icon = Icons.Filled.Edit,
+                                    label = "Edit",
+                                    onClick = { onEdit(item) }
+                                )
+                            }
+                            ViewerActionButton(
+                                icon = Icons.Filled.Info,
+                                label = "Details",
+                                onClick = { onInfo(item) }
+                            )
+                            ViewerActionButton(
+                                icon = Icons.Filled.Delete,
+                                label = "Trash",
+                                tint = Color(0xFFFF5252),
+                                onClick = { onDelete(item) }
+                            )
+                        }
                     }
                 }
             }

@@ -2,11 +2,24 @@ package com.yourgallery.app
 
 import android.Manifest
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Matrix
+import android.graphics.ColorMatrixColorFilter
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.text.format.Formatter
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,13 +27,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +56,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.activity.enableEdgeToEdge
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,6 +130,11 @@ fun YourGalleryApp() {
     var showAddToAlbumDialog by remember { mutableStateOf(false) }
     var showVaultConfirmDialog by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
+    var permanentDeleteTargets by remember { mutableStateOf<List<DeviceMedia>?>(null) }
+    var isVaultUnlocked by remember { mutableStateOf(false) }
+    var showVaultPinModal by remember { mutableStateOf(false) }
+    var isEditorSaving by remember { mutableStateOf(false) }
+    var customAlbumNames by remember { mutableStateOf(prefs.getStringSet("custom_albums", emptySet()) ?: emptySet()) }
     var albumToManage by remember { mutableStateOf<Album?>(null) }
     var showRenameAlbumDialog by remember { mutableStateOf(false) }
     var showDeleteAlbumDialog by remember { mutableStateOf(false) }
@@ -192,6 +213,79 @@ fun YourGalleryApp() {
         }
     }
 
+    // Live ContentObserver to detect new photos, downloads, screenshots, or external deletions
+    DisposableEffect(context, permissionGranted) {
+        if (!permissionGranted) {
+            onDispose {}
+        } else {
+            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    super.onChange(selfChange, uri)
+                    coroutineScope.launch(Dispatchers.IO) {
+                        val refreshed = MediaRepository.loadAllDeviceMedia(context)
+                        withContext(Dispatchers.Main) {
+                            mediaList = refreshed
+                        }
+                    }
+                }
+            }
+            try {
+                context.contentResolver.registerContentObserver(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    true,
+                    observer
+                )
+                context.contentResolver.registerContentObserver(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    true,
+                    observer
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            onDispose {
+                try {
+                    context.contentResolver.unregisterContentObserver(observer)
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    fun performPermanentDelete(items: List<DeviceMedia>) {
+        val idsToDelete = items.map { it.id }.toSet()
+        // INSTANT UI UPDATE
+        mediaList = mediaList.filterNot { it.id in idsToDelete }
+        viewerState?.let { (list, currentIndex) ->
+            val newList = list.filterNot { it.id in idsToDelete }
+            if (newList.isEmpty()) {
+                viewerState = null
+            } else {
+                val nextIndex = currentIndex.coerceAtMost(newList.size - 1)
+                viewerState = newList to nextIndex
+            }
+        }
+        permanentDeleteTargets = null
+        deleteConfirmTargets = null
+        selectedMediaIds = emptySet()
+
+        // BACKGROUND STORAGE & DB DELETION
+        coroutineScope.launch(Dispatchers.IO) {
+            val db = GalleryDatabase.getDatabase(context)
+            db.mediaStateDao().deleteStates(items.map { it.id })
+            items.forEach { item ->
+                try {
+                    context.contentResolver.delete(item.uri, null, null)
+                } catch (_: Exception) {}
+                if (item.path.isNotBlank()) {
+                    try {
+                        val f = File(item.path)
+                        if (f.exists()) f.delete()
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     fun performTrash(items: List<DeviceMedia>) {
         val trashedIds = items.map { it.id }.toSet()
         // INSTANT UI UPDATE
@@ -237,9 +331,11 @@ fun YourGalleryApp() {
 
     // Top-Level BackHandler to smoothly dismiss selection mode, search, overlays, viewer, editor, etc.
     BackHandler(
-        enabled = isSearching || isSelectionMode || compareTargets != null || editorTarget != null || viewerState != null || selectedAlbum != null || infoTarget != null || showThemesSheet
+        enabled = isSearching || isSelectionMode || compareTargets != null || editorTarget != null || viewerState != null || selectedAlbum != null || infoTarget != null || showThemesSheet || showVaultPinModal || permanentDeleteTargets != null
     ) {
         when {
+            showVaultPinModal -> showVaultPinModal = false
+            permanentDeleteTargets != null -> permanentDeleteTargets = null
             isSearching -> { isSearching = false; searchQuery = "" }
             showThemesSheet -> showThemesSheet = false
             infoTarget != null -> infoTarget = null
@@ -389,7 +485,7 @@ fun YourGalleryApp() {
                                 label = "Delete",
                                 tint = Color(0xFFFF5252),
                                 onClick = {
-                                    deleteConfirmTargets = selectedItems
+                                    permanentDeleteTargets = selectedItems
                                 },
                                 modifier = Modifier.weight(1f)
                             )
@@ -564,42 +660,61 @@ fun YourGalleryApp() {
                         )
                     }
                     1 -> { // Albums View
-                        val albums = remember(displayedMedia) { MediaRepository.groupIntoAlbums(displayedMedia) }
+                        val albums = remember(displayedMedia, customAlbumNames) { MediaRepository.groupIntoAlbums(displayedMedia, customAlbumNames) }
                         if (selectedAlbum != null) {
                             // Find the updated album reference
                             val activeAlbum = albums.find { it.name == selectedAlbum!!.name } ?: selectedAlbum!!
                             BackHandler { 
                                 if (isSelectionMode) selectedMediaIds = emptySet() else selectedAlbum = null 
                             }
-                            MediaGrid(
-                                mediaList = activeAlbum.mediaList,
-                                imageLoader = imageLoader,
-                                selectedMediaIds = selectedMediaIds,
-                                gridColumns = gridColumns,
-                                gridState = albumDetailState,
-                                onGridColumnsChange = { gridColumns = it },
-                                onItemClick = { item, index ->
-                                    if (isSelectionMode) {
-                                        selectedMediaIds = if (selectedMediaIds.contains(item.id)) selectedMediaIds - item.id else selectedMediaIds + item.id
-                                    } else {
-                                        viewerState = activeAlbum.mediaList to index
-                                    }
-                                },
-                                onItemLongClick = { item ->
-                                    selectedMediaIds = if (selectedMediaIds.contains(item.id)) selectedMediaIds - item.id else selectedMediaIds + item.id
-                                },
-                                onDragSelect = { item ->
-                                    if (isSelectionMode) {
-                                        selectedMediaIds = selectedMediaIds + item.id
-                                    }
-                                },
-                                onSelectGroup = { group ->
-                                    selectedMediaIds = selectedMediaIds + group.map { it.id }
-                                },
-                                onDeselectGroup = { group ->
-                                    selectedMediaIds = selectedMediaIds - group.map { it.id }.toSet()
+                            if (activeAlbum.mediaList.isEmpty()) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Folder,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(64.dp)
+                                    )
+                                    Spacer(Modifier.height(16.dp))
+                                    Text("No photos in this album yet", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text("Select photos in the gallery and choose 'Add to Album'", fontSize = 13.sp, color = Color.Gray)
                                 }
-                            )
+                            } else {
+                                MediaGrid(
+                                    mediaList = activeAlbum.mediaList,
+                                    imageLoader = imageLoader,
+                                    selectedMediaIds = selectedMediaIds,
+                                    gridColumns = gridColumns,
+                                    gridState = albumDetailState,
+                                    onGridColumnsChange = { gridColumns = it },
+                                    onItemClick = { item, index ->
+                                        if (isSelectionMode) {
+                                            selectedMediaIds = if (selectedMediaIds.contains(item.id)) selectedMediaIds - item.id else selectedMediaIds + item.id
+                                        } else {
+                                            viewerState = activeAlbum.mediaList to index
+                                        }
+                                    },
+                                    onItemLongClick = { item ->
+                                        selectedMediaIds = if (selectedMediaIds.contains(item.id)) selectedMediaIds - item.id else selectedMediaIds + item.id
+                                    },
+                                    onDragSelect = { item ->
+                                        if (isSelectionMode) {
+                                            selectedMediaIds = selectedMediaIds + item.id
+                                        }
+                                    },
+                                    onSelectGroup = { group ->
+                                        selectedMediaIds = selectedMediaIds + group.map { it.id }
+                                    },
+                                    onDeselectGroup = { group ->
+                                        selectedMediaIds = selectedMediaIds - group.map { it.id }.toSet()
+                                    }
+                                )
+                            }
                         } else {
                             AlbumGrid(
                                 albums = albums,
@@ -629,9 +744,13 @@ fun YourGalleryApp() {
                                             if (cover != null) selectedAlbum = Album("Edited", cover, edited.size, edited)
                                         }
                                         "vault", "hidden" -> {
-                                            val hidden = mediaList.filter { it.isHidden && it.trashedAt == 0L }
-                                            val cover = hidden.firstOrNull() ?: mediaList.firstOrNull()
-                                            if (cover != null) selectedAlbum = Album("Locked Vault", cover, hidden.size, hidden)
+                                            if (isVaultUnlocked) {
+                                                val hidden = mediaList.filter { it.isHidden && it.trashedAt == 0L }
+                                                val cover = hidden.firstOrNull() ?: mediaList.firstOrNull()
+                                                if (cover != null) selectedAlbum = Album("Locked Vault", cover, hidden.size, hidden)
+                                            } else {
+                                                showVaultPinModal = true
+                                            }
                                         }
                                         "trash" -> {
                                             val trashed = mediaList.filter { it.trashedAt > 0 }
@@ -728,11 +847,25 @@ fun YourGalleryApp() {
                     onInfo = { item -> infoTarget = item },
                     onEdit = { item -> editorTarget = item },
                     onDelete = { item ->
-                        if (System.currentTimeMillis() < deleteSnoozeUntil) {
-                            performTrash(listOf(item))
+                        if (item.trashedAt > 0L) {
+                            permanentDeleteTargets = listOf(item)
                         } else {
-                            deleteConfirmTargets = listOf(item)
+                            if (System.currentTimeMillis() < deleteSnoozeUntil) {
+                                performTrash(listOf(item))
+                            } else {
+                                deleteConfirmTargets = listOf(item)
+                            }
                         }
+                    },
+                    onRestore = { item ->
+                        mediaList = mediaList.map { if (it.id == item.id) it.copy(trashedAt = 0L) else it }
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val db = GalleryDatabase.getDatabase(context)
+                            val dao = db.mediaStateDao()
+                            val state = dao.getState(item.id) ?: MediaState(item.id)
+                            dao.insertOrUpdate(state.copy(trashedAt = 0L))
+                        }
+                        viewerState = null
                     }
                 )
             }
@@ -788,18 +921,33 @@ fun YourGalleryApp() {
                 EditorScreen(
                     item = target,
                     imageLoader = imageLoader,
+                    isSaving = isEditorSaving,
                     onClose = { editorTarget = null },
-                    onSave = { 
-                        // INSTANT UI UPDATE
-                        mediaList = mediaList.map { if (it.id == target.id) it.copy(isEdited = true) else it }
-                        editorTarget = null
-                        
-                        // BACKGROUND DB UPDATE
-                        coroutineScope.launch(Dispatchers.IO) {
-                            val db = GalleryDatabase.getDatabase(context)
-                            val dao = db.mediaStateDao()
-                            val state = dao.getState(target.id) ?: MediaState(target.id)
-                            dao.insertOrUpdate(state.copy(isEdited = true))
+                    onSave = { rotation, exposure, contrast, saturation, filter ->
+                        coroutineScope.launch {
+                            isEditorSaving = true
+                            val savedUri = withContext(Dispatchers.IO) {
+                                saveEditedImageBitmap(
+                                    context = context,
+                                    item = target,
+                                    rotation = rotation,
+                                    exposure = exposure,
+                                    contrast = contrast,
+                                    saturation = saturation,
+                                    filter = filter
+                                )
+                            }
+                            isEditorSaving = false
+                            if (savedUri != null) {
+                                Toast.makeText(context, "Saved to Pictures/YourGallery", Toast.LENGTH_SHORT).show()
+                                val refreshed = withContext(Dispatchers.IO) {
+                                    MediaRepository.loadAllDeviceMedia(context)
+                                }
+                                mediaList = refreshed
+                            } else {
+                                Toast.makeText(context, "Failed to save edited photo", Toast.LENGTH_SHORT).show()
+                            }
+                            editorTarget = null
                         }
                     }
                 )
@@ -887,11 +1035,12 @@ fun YourGalleryApp() {
                         onClick = {
                             if (newAlbumName.isNotBlank()) {
                                 val name = newAlbumName.trim()
-                                if (mediaList.isNotEmpty()) {
-                                    val firstItem = mediaList.first()
-                                    val album = Album(name, firstItem, 0, emptyList())
-                                    selectedAlbum = album
-                                }
+                                val updated = customAlbumNames + name
+                                customAlbumNames = updated
+                                prefs.edit().putStringSet("custom_albums", updated).apply()
+                                val firstItem = mediaList.firstOrNull()
+                                val album = Album(name, firstItem, 0, emptyList())
+                                selectedAlbum = album
                                 showCreateAlbumDialog = false
                             }
                         }
@@ -1061,6 +1210,9 @@ fun YourGalleryApp() {
                         val oldName = albumToManage!!.name
                         val finalName = newName.trim()
                         if (finalName.isNotBlank() && finalName != oldName) {
+                            val updatedSet = (customAlbumNames - oldName) + finalName
+                            customAlbumNames = updatedSet
+                            prefs.edit().putStringSet("custom_albums", updatedSet).apply()
                             coroutineScope.launch(Dispatchers.IO) {
                                 val db = GalleryDatabase.getDatabase(context)
                                 val dao = db.mediaStateDao()
@@ -1097,6 +1249,9 @@ fun YourGalleryApp() {
                 confirmButton = {
                     TextButton(onClick = {
                         val nameToRemove = albumToManage!!.name
+                        val updatedSet = customAlbumNames - nameToRemove
+                        customAlbumNames = updatedSet
+                        prefs.edit().putStringSet("custom_albums", updatedSet).apply()
                         coroutineScope.launch(Dispatchers.IO) {
                             val db = GalleryDatabase.getDatabase(context)
                             val dao = db.mediaStateDao()
@@ -1125,33 +1280,74 @@ fun YourGalleryApp() {
 
         // Empty Trash Confirmation Dialog
         if (showEmptyTrashDialog) {
+            val trashedItems = remember(mediaList) { mediaList.filter { it.trashedAt > 0 } }
             AlertDialog(
                 onDismissRequest = { showEmptyTrashDialog = false },
                 title = { Text("Empty Trash?") },
-                text = { Text("All items in Recently Deleted will be permanently deleted.") },
+                text = { Text("All ${trashedItems.size} items in Recently Deleted will be permanently deleted.") },
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            coroutineScope.launch(Dispatchers.IO) {
-                                val db = GalleryDatabase.getDatabase(context)
-                                val dao = db.mediaStateDao()
-                                val trashed = dao.getAllStates().filter { it.trashedAt > 0 }
-                                trashed.forEach { state ->
-                                    dao.insertOrUpdate(state.copy(trashedAt = 0))
-                                }
-                                val refreshed = MediaRepository.loadAllDeviceMedia(context)
-                                withContext(Dispatchers.Main) {
-                                    mediaList = refreshed
-                                    selectedAlbum = null
-                                    showEmptyTrashDialog = false
-                                }
-                            }
+                            showEmptyTrashDialog = false
+                            selectedAlbum = null
+                            performPermanentDelete(trashedItems)
                         }
                     ) { Text("Empty Trash", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold) }
                 },
                 dismissButton = {
                     TextButton(onClick = { showEmptyTrashDialog = false }) { Text("Cancel") }
                 }
+            )
+        }
+
+        // Permanent Delete Confirmation Dialog (Single/Selection in Trash)
+        permanentDeleteTargets?.let { targets ->
+            AlertDialog(
+                onDismissRequest = { permanentDeleteTargets = null },
+                title = { Text(if (targets.size > 1) "Permanently delete ${targets.size} items?" else "Permanently delete item?") },
+                text = { Text("This will permanently remove the files from your device storage. This action cannot be undone.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val toDelete = targets
+                            permanentDeleteTargets = null
+                            performPermanentDelete(toDelete)
+                        }
+                    ) { Text("Delete Forever", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { permanentDeleteTargets = null }) { Text("Cancel") }
+                }
+            )
+        }
+
+        // Vault PIN Setup/Unlock Dialog
+        if (showVaultPinModal) {
+            val savedPinHash = prefs.getString("vault_pin_hash", null)
+            VaultPinDialog(
+                hasExistingPin = savedPinHash != null,
+                onVerifyPin = { pin ->
+                    if (hashVaultPin(pin) == savedPinHash) {
+                        isVaultUnlocked = true
+                        showVaultPinModal = false
+                        val hidden = mediaList.filter { it.isHidden && it.trashedAt == 0L }
+                        val cover = hidden.firstOrNull() ?: mediaList.firstOrNull()
+                        if (cover != null) selectedAlbum = Album("Locked Vault", cover, hidden.size, hidden)
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onSetPin = { newPin ->
+                    prefs.edit().putString("vault_pin_hash", hashVaultPin(newPin)).apply()
+                    isVaultUnlocked = true
+                    showVaultPinModal = false
+                    val hidden = mediaList.filter { it.isHidden && it.trashedAt == 0L }
+                    val cover = hidden.firstOrNull() ?: mediaList.firstOrNull()
+                    if (cover != null) selectedAlbum = Album("Locked Vault", cover, hidden.size, hidden)
+                    Toast.makeText(context, "Vault PIN set successfully", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showVaultPinModal = false }
             )
         }
 
@@ -1226,6 +1422,30 @@ fun YourGalleryApp() {
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    HorizontalDivider()
+
+                    Text("Security & Privacy", style = MaterialTheme.typography.titleMedium)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Vault PIN Protection", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (prefs.getString("vault_pin_hash", null) != null) "PIN protection is active" else "No PIN set",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
+                        TextButton(onClick = {
+                            showThemesSheet = false
+                            showVaultPinModal = true
+                        }) {
+                            Text(if (prefs.getString("vault_pin_hash", null) != null) "Change PIN" else "Set PIN")
+                        }
+                    }
+
                     Spacer(Modifier.height(32.dp))
                     Text(
                         text = "Your Gallery • Fluid & Open Source", 
@@ -1267,6 +1487,312 @@ fun SelectionActionButton(
         Spacer(Modifier.height(2.dp))
         Text(label, fontSize = 10.sp, color = tint, fontWeight = FontWeight.Medium)
     }
+}
+
+@Composable
+fun VaultPinDialog(
+    hasExistingPin: Boolean,
+    onVerifyPin: (String) -> Boolean,
+    onSetPin: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var confirmPin by remember { mutableStateOf<String?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val title = if (hasExistingPin) {
+        "Unlock Vault"
+    } else if (confirmPin == null) {
+        "Set Vault PIN"
+    } else {
+        "Confirm Vault PIN"
+    }
+
+    val subtitle = if (hasExistingPin) {
+        "Enter your 4-digit PIN to access private media."
+    } else if (confirmPin == null) {
+        "Choose a 4-digit PIN to protect private photos."
+    } else {
+        "Re-enter your 4-digit PIN to confirm."
+    }
+
+    fun handleDigit(digit: String) {
+        if (pin.length >= 4) return
+        val nextPin = pin + digit
+        errorMessage = null
+        pin = nextPin
+
+        if (nextPin.length == 4) {
+            if (hasExistingPin) {
+                val ok = onVerifyPin(nextPin)
+                if (!ok) {
+                    errorMessage = "Incorrect PIN. Try again."
+                    pin = ""
+                }
+            } else {
+                if (confirmPin == null) {
+                    confirmPin = nextPin
+                    pin = ""
+                } else if (confirmPin == nextPin) {
+                    onSetPin(nextPin)
+                } else {
+                    errorMessage = "PINs did not match. Start over."
+                    confirmPin = null
+                    pin = ""
+                }
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Icon(
+                    Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp).padding(bottom = 8.dp)
+                )
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(vertical = 16.dp)
+                ) {
+                    repeat(4) { idx ->
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (idx < pin.length) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
+                        )
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Text(
+                        errorMessage!!,
+                        color = Color(0xFFFF5252),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                val keys = listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("", "0", "DEL")
+                )
+                keys.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        row.forEach { k ->
+                            if (k.isEmpty()) {
+                                Spacer(Modifier.size(56.dp))
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(28.dp))
+                                        .clickable {
+                                            if (k == "DEL") {
+                                                if (pin.isNotEmpty()) {
+                                                    pin = pin.dropLast(1)
+                                                    errorMessage = null
+                                                }
+                                            } else {
+                                                handleDigit(k)
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (k == "DEL") {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.Backspace,
+                                            contentDescription = "Delete",
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    } else {
+                                        Text(
+                                            k,
+                                            fontSize = 20.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+fun saveEditedImageBitmap(
+    context: Context,
+    item: DeviceMedia,
+    rotation: Float,
+    exposure: Float,
+    contrast: Float,
+    saturation: Float,
+    filter: String
+): Uri? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(item.uri) ?: return null
+        val sourceBitmap = BitmapFactory.decodeStream(inputStream) ?: return null
+        inputStream.close()
+
+        val matrix = Matrix()
+        if (rotation != 0f) {
+            matrix.postRotate(rotation)
+        }
+        val rotatedBitmap = if (rotation != 0f) {
+            Bitmap.createBitmap(sourceBitmap, 0, 0, sourceBitmap.width, sourceBitmap.height, matrix, true).also {
+                if (it != sourceBitmap) sourceBitmap.recycle()
+            }
+        } else {
+            sourceBitmap
+        }
+
+        val cm = android.graphics.ColorMatrix()
+        when (filter) {
+            "Rose Film" -> {
+                val rose = android.graphics.ColorMatrix(floatArrayOf(
+                    1.15f, 0.05f, 0.05f, 0f, 15f,
+                    0.05f, 0.95f, 0.05f, 0f, 5f,
+                    0.05f, 0.05f, 1.05f, 0f, 10f,
+                    0f, 0f, 0f, 1f, 0f
+                ))
+                cm.postConcat(rose)
+            }
+            "Soft Glow" -> {
+                val glow = android.graphics.ColorMatrix(floatArrayOf(
+                    1.08f, 0.02f, 0.02f, 0f, 10f,
+                    0.02f, 1.05f, 0.02f, 0f, 10f,
+                    0.02f, 0.02f, 1.02f, 0f, 10f,
+                    0f, 0f, 0f, 1f, 0f
+                ))
+                cm.postConcat(glow)
+            }
+            "Vivid" -> {
+                val vivid = android.graphics.ColorMatrix().apply { setSaturation(1.6f) }
+                cm.postConcat(vivid)
+            }
+            "Golden" -> {
+                val golden = android.graphics.ColorMatrix(floatArrayOf(
+                    1.25f, 0.05f, 0f, 0f, 12f,
+                    0.05f, 1.10f, 0f, 0f, 8f,
+                    0f, 0f, 0.85f, 0f, -5f,
+                    0f, 0f, 0f, 1f, 0f
+                ))
+                cm.postConcat(golden)
+            }
+            "Dramatic" -> {
+                val dramatic = android.graphics.ColorMatrix().apply { setSaturation(0.6f) }
+                cm.postConcat(dramatic)
+            }
+            "Mono", "Noir" -> {
+                val mono = android.graphics.ColorMatrix().apply { setSaturation(0f) }
+                cm.postConcat(mono)
+            }
+        }
+
+        if (exposure != 0f) {
+            val brightnessAdd = exposure * 100f
+            val brightMat = android.graphics.ColorMatrix(floatArrayOf(
+                1f, 0f, 0f, 0f, brightnessAdd,
+                0f, 1f, 0f, 0f, brightnessAdd,
+                0f, 0f, 1f, 0f, brightnessAdd,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            cm.postConcat(brightMat)
+        }
+
+        if (contrast != 1f) {
+            val scale = contrast
+            val translate = (-0.5f * scale + 0.5f) * 255f
+            val contrastMat = android.graphics.ColorMatrix(floatArrayOf(
+                scale, 0f, 0f, 0f, translate,
+                0f, scale, 0f, 0f, translate,
+                0f, 0f, scale, 0f, translate,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            cm.postConcat(contrastMat)
+        }
+
+        if (saturation != 1f && filter != "Mono" && filter != "Noir") {
+            val satMat = android.graphics.ColorMatrix().apply { setSaturation(saturation) }
+            cm.postConcat(satMat)
+        }
+
+        val resultBitmap = Bitmap.createBitmap(rotatedBitmap.width, rotatedBitmap.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(resultBitmap)
+        val paint = Paint().apply {
+            colorFilter = ColorMatrixColorFilter(cm)
+        }
+        canvas.drawBitmap(rotatedBitmap, 0f, 0f, paint)
+        rotatedBitmap.recycle()
+
+        val filename = "EDIT_${System.currentTimeMillis()}_${item.displayName.replace(".png", ".jpg").replace(".webp", ".jpg")}"
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/YourGallery")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val insertedUri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        if (insertedUri != null) {
+            context.contentResolver.openOutputStream(insertedUri)?.use { out ->
+                resultBitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                context.contentResolver.update(insertedUri, contentValues, null, null)
+            }
+        }
+        resultBitmap.recycle()
+        insertedUri
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+fun hashVaultPin(pin: String): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    val bytes = md.digest(pin.toByteArray(Charsets.UTF_8))
+    return bytes.joinToString("") { "%02x".format(it) }
 }
 
 

@@ -30,8 +30,9 @@ import com.yourgallery.app.DeviceMedia
 fun EditorScreen(
     item: DeviceMedia,
     imageLoader: ImageLoader,
+    isSaving: Boolean = false,
     onClose: () -> Unit,
-    onSave: () -> Unit
+    onSave: (rotation: Float, exposure: Float, contrast: Float, saturation: Float, filter: String) -> Unit
 ) {
     var rotationDegrees by remember { mutableFloatStateOf(0f) }
     var exposure by remember { mutableFloatStateOf(0f) }
@@ -139,11 +140,25 @@ fun EditorScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f }) {
+                    IconButton(
+                        onClick = { rotationDegrees = (rotationDegrees + 90f) % 360f },
+                        enabled = !isSaving
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.RotateRight, contentDescription = "Rotate 90 Degrees")
                     }
-                    IconButton(onClick = onSave) {
-                        Icon(Icons.Filled.Check, contentDescription = "Save")
+                    IconButton(
+                        onClick = { onSave(rotationDegrees, exposure, contrast, saturation, selectedFilter) },
+                        enabled = !isSaving
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Filled.Check, contentDescription = "Save")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

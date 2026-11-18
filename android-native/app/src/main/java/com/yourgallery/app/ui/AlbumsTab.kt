@@ -1,6 +1,7 @@
 package com.yourgallery.app.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -81,16 +83,34 @@ fun AlbumGrid(
                             onLongClick = { onAlbumLongClick(album) }
                         )
                 ) {
-                    AsyncImage(
-                        model = album.coverMedia.uri,
-                        imageLoader = imageLoader,
-                        contentDescription = album.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1.2f)
-                            .clip(RoundedCornerShape(12.dp))
-                    )
+                    if (album.coverMedia != null) {
+                        AsyncImage(
+                            model = album.coverMedia.uri,
+                            imageLoader = imageLoader,
+                            contentDescription = album.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.2f)
+                                .clip(RoundedCornerShape(12.dp))
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.2f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
                     Spacer(Modifier.height(6.dp))
                     Text(album.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${album.mediaCount} items", fontSize = 12.sp, color = Color.Gray)

@@ -14,6 +14,7 @@ data class DeviceMedia(
     val sizeBytes: Long,
     val isVideo: Boolean,
     val durationMs: Long,
+    val path: String = "",
     // Database injected state
     val isFavorite: Boolean = false,
     val isHidden: Boolean = false,
@@ -26,7 +27,7 @@ data class DeviceMedia(
 
 data class Album(
     val name: String,
-    val coverMedia: DeviceMedia,
+    val coverMedia: DeviceMedia? = null,
     val mediaCount: Int,
     val mediaList: List<DeviceMedia>
 )
@@ -43,6 +44,7 @@ object MediaRepository {
                 MediaStore.MediaColumns.DATE_TAKEN,
                 MediaStore.MediaColumns.DATE_ADDED,
                 MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.DATA,
                 if (isVideo) MediaStore.Video.VideoColumns.DURATION else MediaStore.MediaColumns.WIDTH
             )
             val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
@@ -53,6 +55,7 @@ object MediaRepository {
                 val takenCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
                 val addedCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val dataCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
                 val durCol = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.VideoColumns.DURATION) else -1
 
                 while (cursor.moveToNext()) {
@@ -60,6 +63,7 @@ object MediaRepository {
                     val uri = ContentUris.withAppendedId(collection, id)
                     val taken = cursor.getLong(takenCol)
                     val added = cursor.getLong(addedCol) * 1000L
+                    val filePath = if (dataCol >= 0) cursor.getString(dataCol) ?: "" else ""
                     items.add(
                         DeviceMedia(
                             id = id,
@@ -69,7 +73,8 @@ object MediaRepository {
                             dateTakenMs = if (taken > 0) taken else added,
                             sizeBytes = cursor.getLong(sizeCol),
                             isVideo = isVideo,
-                            durationMs = if (isVideo && durCol >= 0) cursor.getLong(durCol) else 0L
+                            durationMs = if (isVideo && durCol >= 0) cursor.getLong(durCol) else 0L,
+                            path = filePath
                         )
                     )
                 }
@@ -101,7 +106,7 @@ object MediaRepository {
         }.sortedByDescending { it.dateTakenMs }
     }
 
-    fun groupIntoAlbums(mediaList: List<DeviceMedia>): List<Album> {
+    fun groupIntoAlbums(mediaList: List<DeviceMedia>, extraAlbumNames: Set<String> = emptySet()): List<Album> {
         val standardAlbums = mediaList.groupBy { it.bucketName }.toMutableMap()
         
         // Add custom albums
@@ -117,6 +122,14 @@ object MediaRepository {
                 }
             }
         }
+
+        // Include explicitly created custom albums even if currently empty
+        extraAlbumNames.forEach { name ->
+            val trimmed = name.trim()
+            if (trimmed.isNotEmpty() && !standardAlbums.containsKey(trimmed)) {
+                standardAlbums[trimmed] = emptyList()
+            }
+        }
         
         // Unified Videos album containing ALL videos regardless of folder
         val allVideos = mediaList.filter { it.isVideo }
@@ -129,7 +142,7 @@ object MediaRepository {
         return standardAlbums.map { (bucketName, items) ->
                 Album(
                     name = bucketName,
-                    coverMedia = items.first(),
+                    coverMedia = items.firstOrNull(),
                     mediaCount = items.size,
                     mediaList = items.sortedByDescending { it.dateTakenMs }
                 )

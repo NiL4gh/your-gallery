@@ -1,17 +1,19 @@
 package com.yourgallery.app.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import coil.ImageLoader
@@ -30,11 +32,29 @@ fun SearchView(
     onDragSelect: (DeviceMedia) -> Unit = {},
     onSelectGroup: (List<DeviceMedia>) -> Unit = {}
 ) {
-    val filteredMedia = remember(query, mediaList) {
-        if (query.isBlank()) mediaList else {
-            mediaList.filter {
-                it.displayName.contains(query, ignoreCase = true) ||
-                it.bucketName.contains(query, ignoreCase = true)
+    var activeFilter by remember { mutableStateOf("All") }
+    val filterOptions = listOf("All", "Photos", "Videos", "Favorites", "Screenshots")
+
+    // Filter out trashed and locked vault photos to prevent leaks
+    val filteredMedia = remember(query, mediaList, activeFilter) {
+        val baseVisible = mediaList.filter { it.trashedAt == 0L && !it.isHidden }
+        val categoryFiltered = when (activeFilter) {
+            "Photos" -> baseVisible.filter { !it.isVideo }
+            "Videos" -> baseVisible.filter { it.isVideo }
+            "Favorites" -> baseVisible.filter { it.isFavorite }
+            "Screenshots" -> baseVisible.filter { it.bucketName.contains("Screenshot", ignoreCase = true) }
+            else -> baseVisible
+        }
+
+        if (query.isBlank()) {
+            categoryFiltered
+        } else {
+            val q = query.trim().lowercase()
+            categoryFiltered.filter { item ->
+                item.displayName.lowercase().contains(q) ||
+                item.bucketName.lowercase().contains(q) ||
+                item.caption.lowercase().contains(q) ||
+                item.tags.lowercase().contains(q)
             }
         }
     }
@@ -44,7 +64,7 @@ fun SearchView(
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
-            placeholder = { Text("Search photos or albums...") },
+            placeholder = { Text("Search photos, albums, or tags...") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
             trailingIcon = {
                 if (query.isNotEmpty()) {
@@ -53,10 +73,23 @@ fun SearchView(
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
             singleLine = true,
             shape = RoundedCornerShape(12.dp)
         )
+
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(filterOptions) { opt ->
+                FilterChip(
+                    selected = activeFilter == opt,
+                    onClick = { activeFilter = opt },
+                    label = { Text(opt) }
+                )
+            }
+        }
 
         MediaGrid(
             mediaList = filteredMedia,
