@@ -16,6 +16,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -109,6 +111,8 @@ fun YourGalleryApp() {
 
     // Custom Dialog States
     var showCreateAlbumDialog by remember { mutableStateOf(false) }
+    var showAddToAlbumDialog by remember { mutableStateOf(false) }
+    var showVaultConfirmDialog by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
     var albumToManage by remember { mutableStateOf<Album?>(null) }
     var showRenameAlbumDialog by remember { mutableStateOf(false) }
@@ -251,8 +255,25 @@ fun YourGalleryApp() {
         Scaffold(
             topBar = {
                 if (isSelectionMode) {
+                    val selectedItems = remember(mediaList, selectedMediaIds) {
+                        mediaList.filter { selectedMediaIds.contains(it.id) }
+                    }
+                    val selectedTotalBytes = remember(selectedItems) {
+                        selectedItems.sumOf { it.sizeBytes }
+                    }
                     TopAppBar(
-                        title = { Text("${selectedMediaIds.size} Selected", fontWeight = FontWeight.Bold) },
+                        title = {
+                            Column {
+                                Text("${selectedMediaIds.size} Selected", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                if (selectedTotalBytes > 0) {
+                                    Text(
+                                        Formatter.formatFileSize(context, selectedTotalBytes),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
                         navigationIcon = {
                             IconButton(onClick = { selectedMediaIds = emptySet() }) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Clear Selection")
@@ -260,14 +281,14 @@ fun YourGalleryApp() {
                         },
                         actions = {
                             TextButton(onClick = {
-                                if (selectedMediaIds.size == mediaList.size) {
+                                if (selectedMediaIds.size >= mediaList.size) {
                                     selectedMediaIds = emptySet()
                                 } else {
                                     selectedMediaIds = mediaList.map { it.id }.toSet()
                                 }
                             }) {
                                 Text(
-                                    text = if (selectedMediaIds.size == mediaList.size) "Deselect All" else "Select All",
+                                    text = if (selectedMediaIds.size >= mediaList.size) "Deselect All" else "Select All",
                                     fontWeight = FontWeight.Bold
                                 )
                             }
@@ -338,75 +359,135 @@ fun YourGalleryApp() {
             bottomBar = {
                 if (isSelectionMode) {
                     BottomAppBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        val selectedItems = mediaList.filter { selectedMediaIds.contains(it.id) }
-                        
-                        SelectionActionButton(
-                            icon = Icons.Filled.FavoriteBorder,
-                            label = "Favorite",
-                            onClick = { 
-                                // INSTANT UI UPDATE
-                                val selectedSet = selectedMediaIds.toSet()
-                                mediaList = mediaList.map { 
-                                    if (it.id in selectedSet) it.copy(isFavorite = !it.isFavorite) else it 
-                                }
-                                selectedMediaIds = emptySet()
+                        val selectedItems = remember(mediaList, selectedMediaIds) {
+                            mediaList.filter { selectedMediaIds.contains(it.id) }
+                        }
+                        val isInTrash = selectedAlbum?.name == "Recently Deleted"
+                        val isInVault = selectedAlbum?.name == "Locked Vault"
 
-                                // BACKGROUND DB UPDATE
-                                coroutineScope.launch(Dispatchers.IO) {
-                                    val db = GalleryDatabase.getDatabase(context)
-                                    val dao = db.mediaStateDao()
-                                    selectedItems.forEach { item ->
-                                        val state = dao.getState(item.id) ?: MediaState(item.id)
-                                        dao.insertOrUpdate(state.copy(isFavorite = !state.isFavorite))
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        SelectionActionButton(
-                            icon = Icons.Filled.LibraryAdd,
-                            label = "Album",
-                            onClick = { /* Add to Album stub */ },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        SelectionActionButton(
-                            icon = Icons.Filled.Share,
-                            label = "Share",
-                            onClick = { shareMedia(selectedItems) },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        SelectionActionButton(
-                            icon = Icons.Filled.Lock,
-                            label = "Vault",
-                            onClick = { /* Lock stub */ },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        if (selectedItems.size in 2..4) {
+                        if (isInTrash) {
                             SelectionActionButton(
-                                icon = Icons.Filled.Compare,
-                                label = "Compare",
-                                onClick = { compareTargets = selectedItems },
+                                icon = Icons.Filled.Restore,
+                                label = "Restore",
+                                onClick = {
+                                    val selectedSet = selectedMediaIds.toSet()
+                                    mediaList = mediaList.map { if (it.id in selectedSet) it.copy(trashedAt = 0L) else it }
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val db = GalleryDatabase.getDatabase(context)
+                                        val dao = db.mediaStateDao()
+                                        selectedItems.forEach { item ->
+                                            val state = dao.getState(item.id) ?: MediaState(item.id)
+                                            dao.insertOrUpdate(state.copy(trashedAt = 0L))
+                                        }
+                                    }
+                                    selectedMediaIds = emptySet()
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            SelectionActionButton(
+                                icon = Icons.Filled.DeleteForever,
+                                label = "Delete",
+                                tint = Color(0xFFFF5252),
+                                onClick = {
+                                    deleteConfirmTargets = selectedItems
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else if (isInVault) {
+                            SelectionActionButton(
+                                icon = Icons.Filled.LockOpen,
+                                label = "Unhide",
+                                onClick = {
+                                    val selectedSet = selectedMediaIds.toSet()
+                                    mediaList = mediaList.map { if (it.id in selectedSet) it.copy(isHidden = false) else it }
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val db = GalleryDatabase.getDatabase(context)
+                                        val dao = db.mediaStateDao()
+                                        selectedItems.forEach { item ->
+                                            val state = dao.getState(item.id) ?: MediaState(item.id)
+                                            dao.insertOrUpdate(state.copy(isHidden = false))
+                                        }
+                                    }
+                                    selectedMediaIds = emptySet()
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            SelectionActionButton(
+                                icon = Icons.Filled.Delete,
+                                label = "Trash",
+                                tint = Color(0xFFFF5252),
+                                onClick = {
+                                    performTrash(selectedItems)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        } else {
+                            SelectionActionButton(
+                                icon = Icons.Filled.FavoriteBorder,
+                                label = "Favorite",
+                                onClick = { 
+                                    val selectedSet = selectedMediaIds.toSet()
+                                    val anyNotFav = selectedItems.any { !it.isFavorite }
+                                    mediaList = mediaList.map { 
+                                        if (it.id in selectedSet) it.copy(isFavorite = anyNotFav) else it 
+                                    }
+                                    // Retain selection so user does not lose their place!
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        val db = GalleryDatabase.getDatabase(context)
+                                        val dao = db.mediaStateDao()
+                                        selectedItems.forEach { item ->
+                                            val state = dao.getState(item.id) ?: MediaState(item.id)
+                                            dao.insertOrUpdate(state.copy(isFavorite = anyNotFav))
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            SelectionActionButton(
+                                icon = Icons.Filled.LibraryAdd,
+                                label = "Album",
+                                onClick = { showAddToAlbumDialog = true },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            SelectionActionButton(
+                                icon = Icons.Filled.Share,
+                                label = "Share",
+                                onClick = { shareMedia(selectedItems) },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            SelectionActionButton(
+                                icon = Icons.Filled.Lock,
+                                label = "Vault",
+                                onClick = { showVaultConfirmDialog = true },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            if (selectedItems.size in 2..4) {
+                                SelectionActionButton(
+                                    icon = Icons.Filled.Compare,
+                                    label = "Compare",
+                                    onClick = { compareTargets = selectedItems },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            SelectionActionButton(
+                                icon = Icons.Filled.Delete,
+                                label = "Trash",
+                                tint = Color(0xFFFF5252),
+                                onClick = { 
+                                    if (System.currentTimeMillis() < deleteSnoozeUntil) {
+                                        performTrash(selectedItems)
+                                    } else {
+                                        deleteConfirmTargets = selectedItems
+                                    }
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
-
-                        SelectionActionButton(
-                            icon = Icons.Filled.Delete,
-                            label = "Trash",
-                            tint = Color(0xFFFF5252),
-                            onClick = { 
-                                if (System.currentTimeMillis() < deleteSnoozeUntil) {
-                                    performTrash(selectedItems)
-                                } else {
-                                    deleteConfirmTargets = selectedItems
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
                     }
                 } else {
                     NavigationBar {
@@ -433,7 +514,8 @@ fun YourGalleryApp() {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 val displayedMedia = remember(mediaList, sortOrder, searchQuery) {
-                    val filtered = if (searchQuery.isBlank()) mediaList else mediaList.filter { it.displayName.contains(searchQuery, ignoreCase = true) }
+                    val nonTrashedAndVisible = mediaList.filter { it.trashedAt == 0L && !it.isHidden }
+                    val filtered = if (searchQuery.isBlank()) nonTrashedAndVisible else nonTrashedAndVisible.filter { it.displayName.contains(searchQuery, ignoreCase = true) }
                     when (sortOrder) {
                         SortOrder.DATE_DESC -> filtered.sortedByDescending { it.dateTakenMs }
                         SortOrder.DATE_ASC -> filtered.sortedBy { it.dateTakenMs }
@@ -547,8 +629,8 @@ fun YourGalleryApp() {
                                             if (cover != null) selectedAlbum = Album("Edited", cover, edited.size, edited)
                                         }
                                         "vault", "hidden" -> {
-                                            val hidden = displayedMedia.filter { it.isHidden }
-                                            val cover = hidden.firstOrNull() ?: displayedMedia.firstOrNull()
+                                            val hidden = mediaList.filter { it.isHidden && it.trashedAt == 0L }
+                                            val cover = hidden.firstOrNull() ?: mediaList.firstOrNull()
                                             if (cover != null) selectedAlbum = Album("Locked Vault", cover, hidden.size, hidden)
                                         }
                                         "trash" -> {
@@ -817,6 +899,113 @@ fun YourGalleryApp() {
                 },
                 dismissButton = {
                     TextButton(onClick = { showCreateAlbumDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
+
+        // Add to Album Dialog (Selection Mode)
+        if (showAddToAlbumDialog) {
+            var targetAlbumInput by remember { mutableStateOf("") }
+            val existingAlbums = remember(mediaList) {
+                MediaRepository.groupIntoAlbums(mediaList).map { it.name }.filter { it !in listOf("Camera", "Videos", "Screenshots", "Downloads", "Recently Deleted") }
+            }
+            val selectedItems = remember(mediaList, selectedMediaIds) {
+                mediaList.filter { selectedMediaIds.contains(it.id) }
+            }
+            AlertDialog(
+                onDismissRequest = { showAddToAlbumDialog = false },
+                title = { Text("Add to Album") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("${selectedItems.size} items will be added.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (existingAlbums.isNotEmpty()) {
+                            Text("Existing Albums:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(existingAlbums) { albumName ->
+                                    FilterChip(
+                                        selected = targetAlbumInput == albumName,
+                                        onClick = { targetAlbumInput = albumName },
+                                        label = { Text(albumName) }
+                                    )
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = targetAlbumInput,
+                            onValueChange = { targetAlbumInput = it },
+                            label = { Text("Album Name") },
+                            placeholder = { Text("e.g. Vacation, Trips, Work") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (targetAlbumInput.isNotBlank()) {
+                                val targetName = targetAlbumInput.trim()
+                                val selectedSet = selectedMediaIds.toSet()
+                                mediaList = mediaList.map { item ->
+                                    if (item.id in selectedSet) {
+                                        val existing = if (item.customAlbums.isBlank()) emptyList() else item.customAlbums.split(",").map { it.trim() }
+                                        val updated = if (existing.contains(targetName)) existing else existing + targetName
+                                        item.copy(customAlbums = updated.joinToString(","))
+                                    } else item
+                                }
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    val db = GalleryDatabase.getDatabase(context)
+                                    val dao = db.mediaStateDao()
+                                    selectedItems.forEach { item ->
+                                        val state = dao.getState(item.id) ?: MediaState(item.id)
+                                        val existing = if (state.albums.isBlank()) emptyList() else state.albums.split(",").map { it.trim() }
+                                        val updated = if (existing.contains(targetName)) existing else existing + targetName
+                                        dao.insertOrUpdate(state.copy(albums = updated.joinToString(",")))
+                                    }
+                                }
+                                selectedMediaIds = emptySet()
+                                showAddToAlbumDialog = false
+                            }
+                        }
+                    ) { Text("Add") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddToAlbumDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
+
+        // Vault Confirmation Dialog
+        if (showVaultConfirmDialog) {
+            val selectedItems = remember(mediaList, selectedMediaIds) {
+                mediaList.filter { selectedMediaIds.contains(it.id) }
+            }
+            AlertDialog(
+                onDismissRequest = { showVaultConfirmDialog = false },
+                title = { Text("Move to Private Vault?") },
+                text = {
+                    Text("${selectedItems.size} items will be hidden from the main gallery timeline and albums.", fontSize = 14.sp)
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val selectedSet = selectedMediaIds.toSet()
+                            mediaList = mediaList.map { if (it.id in selectedSet) it.copy(isHidden = true) else it }
+                            coroutineScope.launch(Dispatchers.IO) {
+                                val db = GalleryDatabase.getDatabase(context)
+                                val dao = db.mediaStateDao()
+                                selectedItems.forEach { item ->
+                                    val state = dao.getState(item.id) ?: MediaState(item.id)
+                                    dao.insertOrUpdate(state.copy(isHidden = true))
+                                }
+                            }
+                            selectedMediaIds = emptySet()
+                            showVaultConfirmDialog = false
+                        }
+                    ) { Text("Move to Vault") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showVaultConfirmDialog = false }) { Text("Cancel") }
                 }
             )
         }

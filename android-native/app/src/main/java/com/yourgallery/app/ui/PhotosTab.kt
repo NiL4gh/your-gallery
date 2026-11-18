@@ -8,7 +8,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -133,6 +138,8 @@ fun MediaGrid(
                 BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                     val maxHeightPx = constraints.maxHeight.toFloat()
                     val coroutineScope = rememberCoroutineScope()
+                    val haptic = LocalHapticFeedback.current
+                    var isDragSelecting by remember { mutableStateOf(false) }
 
                     LazyVerticalGrid(
                         state = gridState,
@@ -146,6 +153,36 @@ fun MediaGrid(
                                 scaleX = animatedGridScale,
                                 scaleY = animatedGridScale
                             )
+                            .pointerInput(isSelectionMode, mediaList) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { offset ->
+                                        isDragSelecting = true
+                                        val hit = findItemAtOffset(offset, gridState, mediaList)
+                                        hit?.let {
+                                            onItemLongClick(it)
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        }
+                                    },
+                                    onDrag = { change, _ ->
+                                        change.consume()
+                                        val hit = findItemAtOffset(change.position, gridState, mediaList)
+                                        hit?.let {
+                                            if (!selectedMediaIds.contains(it.id)) {
+                                                onDragSelect(it)
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
+                                        }
+                                        val y = change.position.y
+                                        if (y < 120f) {
+                                            coroutineScope.launch { gridState.scrollBy(-35f) }
+                                        } else if (y > maxHeightPx - 120f) {
+                                            coroutineScope.launch { gridState.scrollBy(35f) }
+                                        }
+                                    },
+                                    onDragEnd = { isDragSelecting = false },
+                                    onDragCancel = { isDragSelecting = false }
+                                )
+                            }
                     ) {
                         groupedMedia.forEach { (date, itemsForDate) ->
                             item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
@@ -328,10 +365,11 @@ fun MediaGrid(
                                             onDragStart = { isDraggingScrollbar = true },
                                             onDragEnd = { isDraggingScrollbar = false },
                                             onDragCancel = { isDraggingScrollbar = false },
-                                            onDrag = { change, _ ->
+                                            onDrag = { change, dragAmount ->
                                                 change.consume()
-                                                val fraction = (change.position.y / maxHeightPx).coerceIn(0f, 1f)
-                                                val targetGridItem = (fraction * totalGridItems).toInt().coerceIn(0, totalGridItems - 1)
+                                                val deltaFraction = dragAmount.y / (maxHeightPx - capsuleHeightPx).coerceAtLeast(1f)
+                                                val newProgress = (scrollProgress + deltaFraction).coerceIn(0f, 1f)
+                                                val targetGridItem = (newProgress * (totalGridItems - 1)).toInt().coerceIn(0, totalGridItems - 1)
                                                 coroutineScope.launch {
                                                     gridState.scrollToItem(targetGridItem)
                                                 }
@@ -411,4 +449,23 @@ fun formatDuration(durationMs: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return String.format(Locale.US, "%d:%02d", minutes, seconds)
+}
+
+fun findItemAtOffset(
+    offset: Offset,
+    gridState: LazyGridState,
+    mediaList: List<DeviceMedia>
+): DeviceMedia? {
+    val items = gridState.layoutInfo.visibleItemsInfo
+    val hit = items.firstOrNull { info ->
+        val x = offset.x
+        val y = offset.y
+        x >= info.offset.x && x <= (info.offset.x + info.size.width) &&
+        y >= info.offset.y && y <= (info.offset.y + info.size.height)
+    } ?: return null
+
+    val key = hit.key
+    return if (key is Long) {
+        mediaList.find { it.id == key }
+    } else null
 }

@@ -2,6 +2,9 @@ package com.yourgallery.app.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -9,7 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -24,15 +27,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlin.math.max
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.exifinterface.media.ExifInterface
@@ -97,7 +104,9 @@ fun InteractiveViewerPager(
                         item = item,
                         imageLoader = imageLoader,
                         onSingleTap = { showChrome = !showChrome },
-                        onZoomChanged = { isZoomed -> isImageZoomedIn = isZoomed }
+                        onZoomChanged = { isZoomed -> isImageZoomedIn = isZoomed },
+                        onDismissRequest = onClose,
+                        onSwipeUpDetails = { currentItem?.let { onInfo(it) } }
                     )
                 }
             }
@@ -218,61 +227,146 @@ fun ZoomableImageItem(
     item: DeviceMedia, 
     imageLoader: ImageLoader, 
     onSingleTap: () -> Unit = {},
-    onZoomChanged: (Boolean) -> Unit = {}
+    onZoomChanged: (Boolean) -> Unit = {},
+    onDismissRequest: () -> Unit = {},
+    onSwipeUpDetails: () -> Unit = {}
 ) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    val coroutineScope = rememberCoroutineScope()
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    val scaleAnim = remember { Animatable(1f) }
+    val offsetXAnim = remember { Animatable(0f) }
+    val offsetYAnim = remember { Animatable(0f) }
+    val dismissYAnim = remember { Animatable(0f) }
+
+    val isZoomed = scaleAnim.value > 1.05f
 
     // Notify parent pager whether page swiping should be disabled (when zoomed in)
-    LaunchedEffect(scale) {
-        onZoomChanged(scale > 1.05f)
+    LaunchedEffect(isZoomed) {
+        onZoomChanged(isZoomed)
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(scale) {
+            .onSizeChanged { containerSize = it }
+            .pointerInput(containerSize) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Main)
-                        if (scale > 1.05f) {
-                            // When zoomed in: consume touches to allow panning and zooming inside the photo
+                        val pointerCount = event.changes.size
+                        val currentScale = scaleAnim.value
+
+                        if (currentScale > 1.05f) {
+                            // Zoomed in: calculate zoom & pan with STRICT boundary clamping
                             val zoom = event.calculateZoom()
                             val pan = event.calculatePan()
-                            val newScale = (scale * zoom).coerceIn(1f, 5f)
-                            
-                            if (newScale > 1f) {
-                                offsetX += pan.x
-                                offsetY += pan.y
-                            } else {
-                                scale = 1f
-                                offsetX = 0f
-                                offsetY = 0f
+                            val newScale = (currentScale * zoom).coerceIn(1f, 5f)
+
+                            val maxOffsetX = max(0f, (containerSize.width * (newScale - 1f)) / 2f)
+                            val maxOffsetY = max(0f, (containerSize.height * (newScale - 1f)) / 2f)
+
+                            val targetX = if (newScale <= 1.02f) 0f else (offsetXAnim.value + pan.x).coerceIn(-maxOffsetX, maxOffsetX)
+                            val targetY = if (newScale <= 1.02f) 0f else (offsetYAnim.value + pan.y).coerceIn(-maxOffsetY, maxOffsetY)
+
+                            coroutineScope.launch {
+                                scaleAnim.snapTo(newScale)
+                                offsetXAnim.snapTo(targetX)
+                                offsetYAnim.snapTo(targetY)
                             }
-                            scale = newScale
                             event.changes.forEach { it.consume() }
-                        } else if (event.changes.size >= 2) {
+                        } else if (pointerCount >= 2) {
                             // At 1x scale: 2 fingers touch = Pinch to Zoom in!
                             val zoom = event.calculateZoom()
                             if (zoom > 1.01f) {
-                                scale = (scale * zoom).coerceIn(1f, 5f)
+                                val newScale = (currentScale * zoom).coerceIn(1f, 5f)
+                                coroutineScope.launch {
+                                    scaleAnim.snapTo(newScale)
+                                }
                                 event.changes.forEach { it.consume() }
                             }
                         }
-                        // Single finger at 1x scale: DO NOT CONSUME! Allows HorizontalPager left/right swiping!
+
+                        // Check if all pointers released to smoothly snap back if needed
+                        val allPointersUp = event.changes.all { !it.pressed }
+                        if (allPointersUp) {
+                            val activeScale = scaleAnim.value
+                            if (activeScale < 1.05f) {
+                                coroutineScope.launch {
+                                    launch { scaleAnim.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                    launch { offsetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                    launch { offsetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                }
+                            } else {
+                                val maxOffsetX = max(0f, (containerSize.width * (activeScale - 1f)) / 2f)
+                                val maxOffsetY = max(0f, (containerSize.height * (activeScale - 1f)) / 2f)
+                                val clampedX = offsetXAnim.value.coerceIn(-maxOffsetX, maxOffsetX)
+                                val clampedY = offsetYAnim.value.coerceIn(-maxOffsetY, maxOffsetY)
+                                if (clampedX != offsetXAnim.value || clampedY != offsetYAnim.value) {
+                                    coroutineScope.launch {
+                                        launch { offsetXAnim.animateTo(clampedX, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                        launch { offsetYAnim.animateTo(clampedY, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        if (scale > 1.1f) {
-                            scale = 1f
-                            offsetX = 0f
-                            offsetY = 0f
+            .pointerInput(containerSize) {
+                detectVerticalDragGestures(
+                    onDragStart = {},
+                    onDragEnd = {
+                        val currentDismissY = dismissYAnim.value
+                        if (currentDismissY > 160f) {
+                            onDismissRequest()
+                        } else if (currentDismissY < -100f) {
+                            onSwipeUpDetails()
+                            coroutineScope.launch {
+                                dismissYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                            }
                         } else {
-                            scale = 2.5f
+                            coroutineScope.launch {
+                                dismissYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        coroutineScope.launch {
+                            dismissYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+                        }
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        // Only allow vertical swipe-to-dismiss/details when NOT zoomed in
+                        if (scaleAnim.value <= 1.05f) {
+                            change.consume()
+                            coroutineScope.launch {
+                                dismissYAnim.snapTo(dismissYAnim.value + dragAmount)
+                            }
+                        }
+                    }
+                )
+            }
+            .pointerInput(containerSize) {
+                detectTapGestures(
+                    onDoubleTap = { tapOffset ->
+                        coroutineScope.launch {
+                            if (scaleAnim.value > 1.1f) {
+                                launch { scaleAnim.animateTo(1f, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                launch { offsetXAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                launch { offsetYAnim.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow)) }
+                            } else {
+                                val targetScale = 2.5f
+                                val maxOffsetX = max(0f, (containerSize.width * (targetScale - 1f)) / 2f)
+                                val maxOffsetY = max(0f, (containerSize.height * (targetScale - 1f)) / 2f)
+                                val centerX = containerSize.width / 2f
+                                val centerY = containerSize.height / 2f
+                                val targetX = ((centerX - tapOffset.x) * 1.5f).coerceIn(-maxOffsetX, maxOffsetX)
+                                val targetY = ((centerY - tapOffset.y) * 1.5f).coerceIn(-maxOffsetY, maxOffsetY)
+                                launch { scaleAnim.animateTo(targetScale, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                launch { offsetXAnim.animateTo(targetX, spring(stiffness = Spring.StiffnessMediumLow)) }
+                                launch { offsetYAnim.animateTo(targetY, spring(stiffness = Spring.StiffnessMediumLow)) }
+                            }
                         }
                     },
                     onTap = { onSingleTap() }
@@ -280,6 +374,9 @@ fun ZoomableImageItem(
             },
         contentAlignment = Alignment.Center
     ) {
+        val dismissY = dismissYAnim.value
+        val dismissAlpha = if (dismissY > 0f) (1f - (dismissY / 600f)).coerceIn(0.4f, 1f) else 1f
+
         AsyncImage(
             model = item.uri,
             imageLoader = imageLoader,
@@ -288,10 +385,11 @@ fun ZoomableImageItem(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    translationX = offsetX,
-                    translationY = offsetY
+                    scaleX = scaleAnim.value,
+                    scaleY = scaleAnim.value,
+                    translationX = offsetXAnim.value,
+                    translationY = offsetYAnim.value + dismissY,
+                    alpha = dismissAlpha
                 )
         )
     }
