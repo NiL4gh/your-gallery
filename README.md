@@ -18,15 +18,18 @@
 - **Dual-State Fullscreen Pager**: Single-finger horizontal swipes navigate between photos natively (`HorizontalPager`), while two-finger pinch-to-zoom (`1.0x` to `5.0x`) smoothly locks page navigation to allow fluid panning within zoomed images.
 - **Sub-Pixel Date Fast-Scroller**: Floating date capsule badge (`[ Nov 2024 ]`) tracking precise item offsets without jitter or duplicate scrollbars.
 
-### 🛡️ Non-Destructive Media Management
+### 🛡️ Non-Destructive Media Management & Privacy
 - **Offline Room Database**: User operations (Favorites, Trash, Custom Albums, Tags, Edits) update an isolated local Room DB (`MediaState`) without altering original file binaries on storage.
+- **Locked Vault with 4-Digit PIN**: Cryptographically hashed (SHA-256) local Vault lock guarding private media from unauthorized access.
+- **Live Media Synchronization**: Automatic background `ContentObserver` reacting immediately when new camera photos, screenshots, or downloads arrive.
 - **Instant UI Reactivity**: State mutations update the in-memory `mediaList` synchronously for 0ms lag, offloading SQLite persistence to `Dispatchers.IO`.
-- **Soft Recycle Bin**: Trashed items are isolated with timestamped retention before permanent deletion.
+- **Soft Recycle Bin & Permanent Purge**: Trashed items are isolated with timestamped retention, with support for permanent deletion from storage.
 
 ### 🎨 Design & Personalization
 - **True OLED Dark Mode**: Deep `#000000` dark theme with automatic status bar & navigation bar contrast adjustment (`WindowCompat.getInsetsController`).
 - **Dynamic Gallery Personalization**: Customize the gallery title directly from the Settings sheet—name it *"Your Gallery"*, *"Family Photos"*, or your own custom brand.
-- **Built-in Photo Editor**: Integrated controls for Brightness, Contrast, Saturation, Warmth, Rotation, and Aspect Ratios.
+- **Built-in Photo Editor & Real Export**: Integrated controls for Brightness, Contrast, Saturation, Warmth, Rotation, Preset Film Filters, and direct high-resolution JPEG export to `Pictures/YourGallery`.
+- **Side-by-Side Comparison Grid**: Compare 2 to 4 photos in a responsive side-by-side or 2x2 split grid with synchronized quick-favorite and deletion.
 
 ### 🌐 Cross-Platform Companion (Web & PWA)
 - Full-featured **React 19 + TypeScript + Vite PWA** companion app featuring:
@@ -75,14 +78,14 @@ your-gallery/
 ### 📦 Android App Installation
 
 #### Option 1: Direct APK Download
-1. Download `your-gallery-v1.0.0.apk` from the [Releases](https://github.com/your-username/your-gallery/releases) page or `release/` directory.
+1. Download `your-gallery-v1.0.0.apk` from the [Releases](https://github.com/NiL4gh/your-gallery/releases) page or `release/` directory.
 2. Transfer to your Android device and install (allow *Install from Unknown Sources* if prompted).
 3. Grant media permissions on first launch.
 
 #### Option 2: Build from Source
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/your-gallery.git
+git clone https://github.com/NiL4gh/your-gallery.git
 cd your-gallery/android-native
 
 # Build debug APK
