@@ -15,6 +15,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -30,6 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -102,6 +104,18 @@ fun MediaGrid(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No photos or videos found", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        } else if (timelineZoom == "Years") {
+            YearsTimelineView(
+                groupedMedia = groupedMedia,
+                imageLoader = imageLoader,
+                onYearClick = { timelineZoom = "Months" }
+            )
+        } else if (timelineZoom == "Months") {
+            MonthsTimelineView(
+                groupedMedia = groupedMedia,
+                imageLoader = imageLoader,
+                onMonthClick = { timelineZoom = "All" }
+            )
         } else {
             Box(
                 modifier = Modifier
@@ -468,4 +482,117 @@ fun findItemAtOffset(
     return if (key is Long) {
         mediaList.find { it.id == key }
     } else null
+}
+
+@Composable
+fun YearsTimelineView(
+    groupedMedia: Map<String, List<DeviceMedia>>,
+    imageLoader: ImageLoader,
+    onYearClick: (String) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+    ) {
+        groupedMedia.forEach { (year, itemsForYear) ->
+            item(key = "year_$year") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { onYearClick(year) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(year, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            Text("${itemsForYear.size} items", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        val previewItems = itemsForYear.take(4)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            previewItems.forEach { item ->
+                                AsyncImage(
+                                    model = item.uri,
+                                    imageLoader = imageLoader,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(12.dp))
+                                )
+                            }
+                            if (previewItems.size < 4) {
+                                repeat(4 - previewItems.size) {
+                                    Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthsTimelineView(
+    groupedMedia: Map<String, List<DeviceMedia>>,
+    imageLoader: ImageLoader,
+    onMonthClick: (String) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        groupedMedia.forEach { (month, itemsForMonth) ->
+            item(key = "month_$month") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable { onMonthClick(month) }
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        itemsForMonth.firstOrNull()?.let { cover ->
+                            AsyncImage(
+                                model = cover.uri,
+                                imageLoader = imageLoader,
+                                contentDescription = month,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                    )
+                                )
+                        )
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(16.dp)
+                        ) {
+                            Text(month, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("${itemsForMonth.size} photos & videos", fontSize = 13.sp, color = Color.LightGray)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

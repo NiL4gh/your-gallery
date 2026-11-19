@@ -125,6 +125,10 @@ fun YourGalleryApp() {
     // Editor state
     var editorTarget by remember { mutableStateOf<DeviceMedia?>(null) }
 
+    // Collage state
+    var collageTargets by remember { mutableStateOf<List<DeviceMedia>?>(null) }
+    var isCollageSaving by remember { mutableStateOf(false) }
+
     // Search query state
     var searchQuery by remember { mutableStateOf("") }
 
@@ -573,6 +577,15 @@ fun YourGalleryApp() {
                                 )
                             }
 
+                            if (selectedItems.size in 2..6 && selectedItems.all { !it.isVideo }) {
+                                SelectionActionButton(
+                                    icon = Icons.Filled.DashboardCustomize,
+                                    label = "Collage",
+                                    onClick = { collageTargets = selectedItems },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
                             SelectionActionButton(
                                 icon = Icons.Filled.Delete,
                                 label = "Trash",
@@ -872,6 +885,23 @@ fun YourGalleryApp() {
                             dao.insertOrUpdate(state.copy(trashedAt = 0L))
                         }
                         viewerState = null
+                    },
+                    onQuickCrop = { item, scale, offsetX, offsetY, containerSize ->
+                        coroutineScope.launch {
+                            val croppedUri = performQuickCrop(context, item, scale, offsetX, offsetY, containerSize)
+                            if (croppedUri != null) {
+                                Toast.makeText(context, "Quick Crop saved to Pictures/YourGallery", Toast.LENGTH_SHORT).show()
+                                val refreshed = withContext(Dispatchers.IO) {
+                                    MediaRepository.loadAllDeviceMedia(context)
+                                }
+                                mediaList = refreshed
+                            } else {
+                                Toast.makeText(context, "Quick Crop failed", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onSetWallpaper = { item ->
+                        setMediaAsWallpaper(context, item.uri)
                     }
                 )
             }
@@ -954,6 +984,42 @@ fun YourGalleryApp() {
                                 Toast.makeText(context, "Failed to save edited photo", Toast.LENGTH_SHORT).show()
                             }
                             editorTarget = null
+                        }
+                    }
+                )
+            }
+        }
+
+        // Collage Studio Screen
+        AnimatedVisibility(
+            visible = collageTargets != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            collageTargets?.let { targets ->
+                CollageScreen(
+                    items = targets,
+                    imageLoader = imageLoader,
+                    isSaving = isCollageSaving,
+                    onClose = { collageTargets = null },
+                    onSaveCollage = { bitmap ->
+                        coroutineScope.launch {
+                            isCollageSaving = true
+                            val savedUri = withContext(Dispatchers.IO) {
+                                saveCollageImageBitmap(context, bitmap)
+                            }
+                            isCollageSaving = false
+                            if (savedUri != null) {
+                                Toast.makeText(context, "Collage saved to Pictures/YourGallery", Toast.LENGTH_SHORT).show()
+                                val refreshed = withContext(Dispatchers.IO) {
+                                    MediaRepository.loadAllDeviceMedia(context)
+                                }
+                                mediaList = refreshed
+                                collageTargets = null
+                                selectedMediaIds = emptySet()
+                            } else {
+                                Toast.makeText(context, "Failed to save collage", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 )
@@ -1814,6 +1880,36 @@ fun hashVaultPin(pin: String): String {
     val md = MessageDigest.getInstance("SHA-256")
     val bytes = md.digest(pin.toByteArray(Charsets.UTF_8))
     return bytes.joinToString("") { "%02x".format(it) }
+}
+
+suspend fun saveCollageImageBitmap(context: Context, bitmap: Bitmap): Uri? = withContext(Dispatchers.IO) {
+    try {
+        val filename = "COLLAGE_${System.currentTimeMillis()}.jpg"
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/YourGallery")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val insertedUri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        if (insertedUri != null) {
+            context.contentResolver.openOutputStream(insertedUri)?.use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                context.contentResolver.update(insertedUri, contentValues, null, null)
+            }
+        }
+        bitmap.recycle()
+        insertedUri
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
 }
 
 

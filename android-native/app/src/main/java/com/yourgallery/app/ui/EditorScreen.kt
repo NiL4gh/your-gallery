@@ -1,9 +1,11 @@
 package com.yourgallery.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -15,12 +17,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.yourgallery.app.DeviceMedia
@@ -197,9 +202,45 @@ fun EditorScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(16.dp)
+                    .padding(20.dp)
             ) {
+                // Quick Actions: One-Tap Remaster & Reset
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            // Samsung One-Tap Remaster / Auto-Enhance algorithm
+                            exposure = 0.08f
+                            contrast = 1.22f
+                            saturation = 1.18f
+                            selectedFilter = "Vivid"
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Filled.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Auto Remaster", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    TextButton(
+                        onClick = {
+                            exposure = 0f
+                            contrast = 1f
+                            saturation = 1f
+                            selectedFilter = "Original"
+                            rotationDegrees = 0f
+                        }
+                    ) {
+                        Text("Reset", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
                 if (activeTab == "Adjust") {
                     Text("Exposure", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
                     Slider(value = exposure, onValueChange = { exposure = it }, valueRange = -1f..1f)
