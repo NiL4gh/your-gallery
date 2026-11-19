@@ -7,48 +7,70 @@
 [![Web / PWA](https://img.shields.io/badge/Companion-React%2019%20%7C%20Vite%20PWA-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
-> A fluid, modern photo and video gallery combining signature capabilities from **iPhone Photos** (Years/Months timeline, Ken Burns slideshow), **Samsung Gallery** (Quick Crop on zoom, video swipe gestures, Auto Remaster), and **Honor Gallery** (multi-photo Collage Studio) with **Android Material 3 precision**. Designed for high refresh rate displays (120Hz/144Hz) with instant in-memory state reactivity, non-destructive editing, and zero bloat.
+> **The 100% Offline, Ad-Free Native Gallery Solution for Android.**  
+> Combining the signature superpowers of **iPhone Photos** (Years/Months timeline, Ken Burns slideshow), **Samsung Gallery** (Quick Crop on zoom, video swipe gestures, Auto Remaster), and **Honor Gallery** (multi-photo Collage Studio) into a blazing-fast, 120Hz native Jetpack Compose experience.
 
 ---
 
-## 🌟 Highlights & Features
+## 💡 Why I Built This (The Problem & The Solution)
 
-### ⚡ Hybrid Gallery Signatures
-- **Multi-Photo Collage Studio (Honor Gallery Signature)**: Seamlessly select 2 to 6 photos in the gallery and build custom collages with responsive aspect ratios (`1:1`, `4:5`, `9:16`), creative split/mosaic templates, corner roundness, spacing sliders, and high-res composite export.
-- **Floating Quick Crop (Samsung Gallery Signature)**: Zoom past `1.25x` in the viewer to reveal a floating frosted glass `[ ✂ Quick Crop ]` button. Unprojects exact viewport bounds to source bitmap coordinates and saves lossless crops instantly.
-- **Video Player Swipe Gestures (Samsung Video Signature)**: Left-side vertical swipe for screen brightness, right-side vertical swipe for stream volume, and horizontal swipe for scrub seek with smooth animated HUD pill indicators. Double-tap left/right skips 10s.
-- **Years & Months Timeline (iPhone Photos Signature)**: Segmented timeline with dynamic 4-photo montage cards for annual views and hero cards for monthly views, drilling down effortlessly into the fluid days grid.
-- **Ken Burns Slideshow**: Hands-free auto-advance viewing with subtle animated zoom and pan transitions.
-- **One-Tap Auto Remaster**: Instant dynamic luminance equalization and contrast enhancement in the built-in photo editor.
+### The Problem with Stock Android & The Play Store
+Many modern Android phones (including Google Pixels and stock Android devices) ship without a true, offline local gallery app. Instead, users are forced into Google Photos—an app designed around cloud storage subscriptions, continuous backup nag prompts, account sync locks, and slow network-dependent loading just to browse photos already saved on the device.
 
-### ⚡ 120Hz Gesture-First Interaction
-- **Adaptive Column Scaling**: Pinch-to-zoom gesture layer seamlessly shifts photo grid density from **1 to 8 columns**.
-- **Dual-State Fullscreen Pager**: Single-finger horizontal swipes navigate between photos natively (`HorizontalPager`), while two-finger pinch-to-zoom (`1.0x` to `5.0x`) smoothly locks page navigation to allow fluid panning within zoomed images.
+When searching for alternatives on the Google Play Store, the situation is even worse:
+- **Aggressive Full-Screen Ads**: Unclosable 30-second popups interrupting you every few swipes.
+- **Predatory Subscriptions**: Charging $4.99/week just for basic editing or trash bin recovery.
+- **Invasive Permissions**: Demanding contacts, location, and internet access just to view photos.
+- **Sluggish Clunky WebViews**: Stuttering 30fps scrolling that wastes modern 120Hz/144Hz OLED screens.
+
+### The Solution: A True Native Offline Gallery
+A friend recently purchased a stock Android device that had no native gallery app and asked for a recommendation. After reviewing dozens of third-party apps and finding zero clean, private options, I decided to engineer the definitive solution: **Your Gallery**.
+
+A gallery built on three non-negotiable engineering principles:
+1. **Zero Ads, Zero Cloud, Zero Tracking**: 100% offline. No internet permission in the manifest. Your photos never leave your device.
+2. **Flagship Hybrid UX**: Bringing the best signature interaction patterns from iOS, One UI, and MagicOS into one unified Android app.
+3. **120Hz Hardware-Accelerated Performance**: Built with modern Jetpack Compose, Room SQLite virtualized state, Coil image engine, and Media3 ExoPlayer for instant 0ms touch response.
+
+---
+
+## 🌟 Signature Hybrid Features
+
+### 👑 Honor Gallery: Multi-Photo Collage Studio
+- **Dynamic 2 to 6 Photo Compositor**: Select photos directly in the gallery and launch into a full-featured Collage Studio.
+- **Multi-Ratio Framing**: Fluidly switch between Square (`1:1`), Portrait (`4:5`), and Story (`9:16`).
+- **Interactive Customization**: Real-time sliders for corner roundness (`0dp`–`32dp`) and cell spacing (`0dp`–`24dp`).
+- **High-Resolution Composite Export**: Direct lossless composite rendering to `Pictures/YourGallery` at 95% JPEG quality.
+
+### 🌌 Samsung Gallery: Quick Crop & Video Gestures
+- **Instant Floating Quick Crop**: When zooming into any photo past `1.25x`, a floating frosted glass `[ ✂ Quick Crop ]` button animates in. Tapping it unprojects screen coordinates back to source bitmap pixels and exports the exact visible viewport without opening an editor.
+- **Video Player Swipe Gestures**:
+  - Vertical swipe on the **left half** adjusts screen brightness with a dynamic Sun HUD.
+  - Vertical swipe on the **right half** adjusts audio volume with a Speaker HUD.
+  - Horizontal swipe scrubs seek position (`±seconds`) with a timestamped preview pill.
+  - Double-tap left/right rewinds/fast-forwards by 10s.
+- **One-Tap Auto Remaster**: Analyzes and equalizes luminance, contrast, and color vibrancy with a single tap.
+
+### 🍎 iPhone Photos: Segmented Timeline & Slideshow
+- **Years & Months Timeline Cards**:
+  - **Years**: Dynamic 4-photo montage preview cards with photo counters.
+  - **Months**: Curated monthly hero cards with glassmorphic gradients.
+  - Tapping any card drills smoothly into that date's grid.
+- **Ken Burns Slideshow**: Hands-free auto-advance playback (3.5s per image) with subtle animated zoom (`1.0x -> 1.08x`) and gentle panning.
+
+### ⚡ 120Hz Gesture-First Grid & Fast Scroller
+- **Adaptive Column Scaling**: Physical pinch-to-zoom scaling layer toggling grid density from **1 to 8 columns**.
+- **Dual-State Fullscreen Pager**: Single-finger horizontal swipes navigate between photos natively (`HorizontalPager`), while two-finger pinch-to-zoom (`1.0x` to `5.0x`) smoothly locks page navigation to allow fluid panning.
 - **Sub-Pixel Date Fast-Scroller**: Floating date capsule badge (`[ Nov 2024 ]`) tracking precise item offsets without jitter or duplicate scrollbars.
 
-### 🛡️ Non-Destructive Media Management & Privacy
-- **Offline Room Database**: User operations (Favorites, Trash, Custom Albums, Tags, Edits) update an isolated local Room DB (`MediaState`) without altering original file binaries on storage.
+### 🛡️ Non-Destructive Storage & Privacy Vault
+- **Offline Room Database**: Operations (Favorites, Trash, Custom Albums, Tags, Edits) update an isolated local Room DB (`MediaState`) without altering original file binaries.
 - **Locked Vault with 4-Digit PIN**: Cryptographically hashed (SHA-256) local Vault lock guarding private media from unauthorized access.
 - **Live Media Synchronization**: Automatic background `ContentObserver` reacting immediately when new camera photos, screenshots, or downloads arrive.
-- **Instant UI Reactivity**: State mutations update the in-memory `mediaList` synchronously for 0ms lag, offloading SQLite persistence to `Dispatchers.IO`.
-- **Soft Recycle Bin & Permanent Purge**: Trashed items are isolated with timestamped retention, with support for permanent deletion from storage.
-
-### 🎨 Design & Personalization
-- **True OLED Dark Mode**: Deep `#000000` dark theme with automatic status bar & navigation bar contrast adjustment (`WindowCompat.getInsetsController`).
-- **Dynamic Gallery Personalization**: Customize the gallery title directly from the Settings sheet—name it *"Your Gallery"*, *"Family Photos"*, or your own custom brand.
-- **Built-in Photo Editor & Real Export**: Integrated controls for Brightness, Contrast, Saturation, Warmth, Rotation, Preset Film Filters, and direct high-resolution JPEG export to `Pictures/YourGallery`.
-- **Side-by-Side Comparison Grid**: Compare 2 to 4 photos in a responsive side-by-side or 2x2 split grid with synchronized quick-favorite and deletion.
-
-### 🌐 Cross-Platform Companion (Web & PWA)
-- Full-featured **React 19 + TypeScript + Vite PWA** companion app featuring:
-  - Client-side IndexedDB persistence (`your-gallery-db`).
-  - File System Access API integration for auto-populating local phone folders (DCIM/Pictures).
-  - EXIF parser extraction (aperture, focal length, shutter, ISO, camera model).
-  - Side-by-side photo comparison modal.
+- **Instant UI Reactivity**: State mutations update the in-memory `mediaList` synchronously for 0ms visual feedback, offloading SQLite persistence to `Dispatchers.IO`.
 
 ---
 
-## 📱 Architecture & Tech Stack
+## 📱 Technical Architecture
 
 ```
 your-gallery/
@@ -58,9 +80,10 @@ your-gallery/
 │   │   ├── MediaRepository.kt       # MediaStore query engine & Album grouping
 │   │   ├── data/                    # Room Database (GalleryDatabase, MediaState)
 │   │   └── ui/                      # Jetpack Compose UI Screens & Design System
-│   │       ├── PhotosTab.kt         # Masonry grid, fast-scroller, selection mode
-│   │       ├── ViewerScreen.kt      # ExoPlayer, pinch-to-zoom, gesture pager
-│   │       ├── EditorScreen.kt      # Color matrix adjustments & crop transforms
+│   │       ├── CollageScreen.kt     # Multi-photo collage studio & composite canvas
+│   │       ├── ViewerScreen.kt      # ExoPlayer, Quick Crop, video gestures, slideshow
+│   │       ├── PhotosTab.kt         # Years/Months timeline, 1-8 col grid, fast-scroller
+│   │       ├── EditorScreen.kt      # ColorMatrix adjustments, Auto Remaster, filters
 │   │       ├── AlbumsTab.kt         # Folder & custom album grid
 │   │       ├── MemoriesTab.kt       # Curated stories & highlight reels
 │   │       └── SearchTab.kt         # Fast client-side metadata & tag filter
@@ -72,25 +95,24 @@ your-gallery/
 └── release/                         # Signed Release APK ready for sideloading
 ```
 
-### Key Libraries
-- **UI**: Jetpack Compose BOM `2024.10.00`, Material 3, Extended Icons
+### Key Libraries & Components
+- **UI Framework**: Jetpack Compose BOM `2024.10.00`, Material 3, Extended Icons
 - **Image Pipeline**: Coil 2.7.0 (`coil-compose`, `coil-video` with `VideoFrameDecoder`)
 - **Video Engine**: Jetpack Media3 ExoPlayer 1.4.1
 - **Persistence**: AndroidX Room 2.6.1 with KSP (Kotlin Symbol Processing)
-- **Web**: React 19, TypeScript 7, Vite 8, Tailwind CSS 4, Motion
+- **Web Companion**: React 19, TypeScript 7, Vite 8, Tailwind CSS 4, Motion
 
 ---
 
 ## 🚀 Getting Started
 
-### 📦 Android App Installation
+### 📦 Download Pre-Built Release APK
+1. Download **`your-gallery-v1.1.0.apk`** from the [GitHub Releases](https://github.com/NiL4gh/your-gallery/releases/tag/v1.1.0) page or directly from the `release/` directory.
+2. Transfer the APK to your Android device and install (allow *Install from Unknown Sources* if prompted).
+3. Grant storage permissions on first launch.
 
-#### Option 1: Direct APK Download
-1. Download `your-gallery-v1.1.0.apk` from the [Releases](https://github.com/NiL4gh/your-gallery/releases) page or `release/` directory.
-2. Transfer to your Android device and install (allow *Install from Unknown Sources* if prompted).
-3. Grant media permissions on first launch.
+### 🛠️ Build from Source
 
-#### Option 2: Build from Source
 ```bash
 # Clone the repository
 git clone https://github.com/NiL4gh/your-gallery.git
@@ -107,31 +129,13 @@ The output APK will be generated at:
 
 ---
 
-### 💻 Web PWA Companion
+## 🔒 Security & Privacy Guarantee
 
-```bash
-# Navigate to web root
-cd your-gallery
-
-# Install dependencies
-bun install   # or npm install
-
-# Start local development server
-bun run dev   # or npm run dev
-
-# Build production bundle
-bun run build # or npm run build
-```
-
----
-
-## 🔒 Security & Privacy
-
-- **100% Offline by Default**: No analytics, telemetry, or remote server uploads.
-- **Zero Cloud Storage Dependence**: All thumbnails, metadata, and database records remain strictly on your local device.
-- **Decoupled Keystore Secrets**: Keystore paths and passwords are read from `keystore.properties` (gitignored), preventing credential leakage in open-source forks.
+- **No Internet Permission**: The app manifest does not request `android.permission.INTERNET`. Network communication is physically impossible.
+- **100% Offline Storage**: All thumbnails, metadata, and database records remain strictly on your local device.
+- **Non-Destructive**: Original file binaries are never altered; all tags and albums are maintained in a local SQLite database.
 
 ---
 
 ## 📄 License
-This project is open-source and available under the [Apache 2.0 License](LICENSE).
+This project is open-source under the [Apache 2.0 License](LICENSE).
