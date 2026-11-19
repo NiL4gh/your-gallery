@@ -7,11 +7,19 @@
 [![Web / PWA](https://img.shields.io/badge/Companion-React%2019%20%7C%20Vite%20PWA-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 
-> A fluid, modern photo and video gallery combining **iOS fluid gestures** with **Android Material 3 precision**. Designed for high refresh rate displays (120Hz/144Hz) with instant in-memory state reactivity, non-destructive editing, and zero bloat.
+> A fluid, modern photo and video gallery combining signature capabilities from **iPhone Photos** (Years/Months timeline, Ken Burns slideshow), **Samsung Gallery** (Quick Crop on zoom, video swipe gestures, Auto Remaster), and **Honor Gallery** (multi-photo Collage Studio) with **Android Material 3 precision**. Designed for high refresh rate displays (120Hz/144Hz) with instant in-memory state reactivity, non-destructive editing, and zero bloat.
 
 ---
 
 ## 🌟 Highlights & Features
+
+### ⚡ Hybrid Gallery Signatures
+- **Multi-Photo Collage Studio (Honor Gallery Signature)**: Seamlessly select 2 to 6 photos in the gallery and build custom collages with responsive aspect ratios (`1:1`, `4:5`, `9:16`), creative split/mosaic templates, corner roundness, spacing sliders, and high-res composite export.
+- **Floating Quick Crop (Samsung Gallery Signature)**: Zoom past `1.25x` in the viewer to reveal a floating frosted glass `[ ✂ Quick Crop ]` button. Unprojects exact viewport bounds to source bitmap coordinates and saves lossless crops instantly.
+- **Video Player Swipe Gestures (Samsung Video Signature)**: Left-side vertical swipe for screen brightness, right-side vertical swipe for stream volume, and horizontal swipe for scrub seek with smooth animated HUD pill indicators. Double-tap left/right skips 10s.
+- **Years & Months Timeline (iPhone Photos Signature)**: Segmented timeline with dynamic 4-photo montage cards for annual views and hero cards for monthly views, drilling down effortlessly into the fluid days grid.
+- **Ken Burns Slideshow**: Hands-free auto-advance viewing with subtle animated zoom and pan transitions.
+- **One-Tap Auto Remaster**: Instant dynamic luminance equalization and contrast enhancement in the built-in photo editor.
 
 ### ⚡ 120Hz Gesture-First Interaction
 - **Adaptive Column Scaling**: Pinch-to-zoom gesture layer seamlessly shifts photo grid density from **1 to 8 columns**.
@@ -78,7 +86,7 @@ your-gallery/
 ### 📦 Android App Installation
 
 #### Option 1: Direct APK Download
-1. Download `your-gallery-v1.0.0.apk` from the [Releases](https://github.com/NiL4gh/your-gallery/releases) page or `release/` directory.
+1. Download `your-gallery-v1.1.0.apk` from the [Releases](https://github.com/NiL4gh/your-gallery/releases) page or `release/` directory.
 2. Transfer to your Android device and install (allow *Install from Unknown Sources* if prompted).
 3. Grant media permissions on first launch.
 

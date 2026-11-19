@@ -1,5 +1,6 @@
-# Private / Personal directory (contains girlfriend's personalized version)
+# Private / Personal directory (contains girlfriend's personalized version and private docs)
 private/
+docs/
 
 # Android build outputs & caches
 *.apk

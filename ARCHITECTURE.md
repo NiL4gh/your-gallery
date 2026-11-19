@@ -61,7 +61,27 @@ This guarantees smooth 60–120fps tracking across thousands of photos without s
 
 ---
 
-## 5. Web Companion Architecture (PWA)
+## 5. Viewport Unprojection Engine (Samsung Quick Crop)
+
+When zooming into an image in `ZoomableImageItem`, the visible viewport on screen corresponds to a transformed sub-rectangle of the original bitmap. Rather than capturing a screen-resolution snapshot (which would pixelate), the engine solves for exact bitmap coordinates:
+
+Given container dimensions $W \times H$, source dimensions $W_{\text{img}} \times H_{\text{img}}$, zoom scale $S$, and translations $T_x, T_y$:
+$$x_{\min} = \frac{W}{2} - \frac{\frac{W}{2} + T_x}{S}, \quad x_{\max} = \frac{W}{2} + \frac{\frac{W}{2} - T_x}{S}$$
+$$y_{\min} = \frac{H}{2} - \frac{\frac{H}{2} + T_y}{S}, \quad y_{\max} = \frac{H}{2} + \frac{\frac{H}{2} - T_y}{S}$$
+
+These bounds are mapped through the aspect-ratio fitted offsets to extract the crop directly from the high-res decoded source bitmap, yielding loss-free exports.
+
+---
+
+## 6. Multi-Photo Collage Studio Engine (Honor Signature)
+
+The Collage Studio dynamically lays out 2 to 6 photos across 3 aspect ratios (`1:1`, `4:5`, `9:16`):
+- **Live Vector Preview**: Jetpack Compose renders responsive layout cells with clip-path corner radii and spacing.
+- **Hardware-Accelerated Composite Export**: Generates a high-res ($2400 \times N$) canvas on `Dispatchers.IO`, center-crops each source bitmap to its cell's aspect ratio, applies rounded-rect clipping paths, and renders the composite into MediaStore `Pictures/YourGallery`.
+
+---
+
+## 7. Web Companion Architecture (PWA)
 
 - **Storage Engine**: `IndexedDB` (`your-gallery-db`) stores photos, custom albums, and settings.
 - **Directory Sync**: Utilizes the modern **File System Access API** (`showDirectoryPicker`) to directly read local phone folders (e.g. `DCIM/Camera`), extracting EXIF metadata in real time via binary stream decoding.
